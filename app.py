@@ -116,7 +116,7 @@ if "contador_tabla" not in st.session_state:
 df = cargar_datos()
 
 # --- INTERFAZ: CABECERA Y FILTROS ---
-st.title("🎾 Panel General de Pistas - Camping")
+st.title("🎾 Gestión de Pistas")
 
 col_filtro1, col_filtro2 = st.columns(2)
 with col_filtro1:
@@ -170,7 +170,7 @@ if clave_tabla in st.session_state:
             modal_gestionar_reserva(fecha_clic, hora_clic, pista_vista)
 
 # --- CUADRANTE SEMANAL A PANTALLA COMPLETA ---
-st.header(f"🗓️ Vista Semanal: {pista_vista}")
+st.header(f"🗓️ {pista_vista}")
 st.caption("👆 **Haz clic en cualquier celda (libre u ocupada) para gestionarla directamente.**")
 
 cuadrante = pd.DataFrame(index=HORAS, columns=cabeceras_columnas)
