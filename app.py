@@ -139,32 +139,51 @@ with col_form:
 with col_cuadrante:
     st.header(f"🗓️ Semana: {pista_vista}")
     
-    # Preparamos las cabeceras de las columnas (Ej: "Lun 25/03")
+    # Preparamos las cabeceras y detectamos los fines de semana
     cabeceras_columnas = []
+    columnas_finde = [] # Guardaremos cuáles son fin de semana para colorearlas
+    
     for d in fechas_semana:
         nombre_dia = DIAS_SEMANA_ES[d.weekday()]
         fecha_corta = d.strftime("%d/%m")
-        cabeceras_columnas.append(f"{nombre_dia} {fecha_corta}")
         
-    # Creamos el cuadrante vacío (Filas = Horas, Columnas = Días de la semana)
+        # Si es Sábado (5) o Domingo (6)
+        if d.weekday() >= 5:
+            # Añadimos un círculo rojo al texto del encabezado
+            nombre_col = f"🔴 {nombre_dia} {fecha_corta}"
+            columnas_finde.append(nombre_col)
+        else:
+            nombre_col = f"{nombre_dia} {fecha_corta}"
+            
+        cabeceras_columnas.append(nombre_col)
+        
+    # Creamos el cuadrante vacío (Filas = Horas, Columnas = Días)
     cuadrante = pd.DataFrame(index=HORAS, columns=cabeceras_columnas)
     
     # Filtramos los datos solo para la pista seleccionada y los 7 días
     df_vista = df[(df['Pista'] == pista_vista) & (df['Fecha'].isin(fechas_str))]
     
-    # Rellenamos el cuadrante
+    # Rellenamos el cuadrante con las reservas
     for _, fila in df_vista.iterrows():
-        # Buscamos a qué columna pertenece la fecha de esta reserva
         idx_fecha = fechas_str.index(fila['Fecha'])
         nombre_columna = cabeceras_columnas[idx_fecha]
         
         icono_pago = "💰" if fila['Pagado'] == "Sí" else "⏳"
         texto_celda = f"P.{fila['Parcela']} | {fila['Nombre']} {icono_pago}"
         
-        # Colocamos el texto en su celda (Hora, Día)
         cuadrante.at[fila['Hora'], nombre_columna] = texto_celda
         
     cuadrante = cuadrante.fillna("Libre")
     
-    # Mostramos el DataFrame
-    st.dataframe(cuadrante, use_container_width=True, height=800)
+    # --- ESTILIZADO DE PANDAS ---
+    def resaltar_finde(col):
+        """Aplica fondo rojo claro a las celdas si la columna es fin de semana"""
+        if col.name in columnas_finde:
+            return ['background-color: #ffeeee; color: #8b0000'] * len(col)
+        return [''] * len(col)
+
+    # Aplicamos el estilo al DataFrame
+    cuadrante_estilizado = cuadrante.style.apply(resaltar_finde, axis=0)
+    
+    # Mostramos el DataFrame pasando el objeto estilizado
+    st.dataframe(cuadrante_estilizado, use_container_width=True, height=800)
