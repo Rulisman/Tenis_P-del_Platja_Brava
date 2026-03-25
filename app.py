@@ -35,12 +35,11 @@ def guardar_datos(df):
 
 df = cargar_datos()
 
-# --- INICIALIZAR ESTADO DE SESIÓN ---
-# Esto guarda la memoria de lo que clickamos en la tabla
-if "fecha_form" not in st.session_state:
-    st.session_state.fecha_form = date.today()
-if "hora_form" not in st.session_state:
-    st.session_state.hora_form = HORAS[0]
+# --- INICIALIZAR ESTADO DE SESIÓN DE LOS WIDGETS ---
+if "input_fecha" not in st.session_state:
+    st.session_state.input_fecha = date.today()
+if "input_hora" not in st.session_state:
+    st.session_state.input_hora = HORAS[0]
 
 # --- CABECERA Y FILTROS ---
 st.title("🎾 Gestión Semanal de Pistas - Camping")
@@ -51,25 +50,49 @@ with col_filtro1:
 with col_filtro2:
     pista_vista = st.selectbox("🎾 Selecciona la Pista a visualizar", PISTAS)
 
-# Calculamos los 7 días a mostrar
+# Calculamos los 7 días y generamos las CABECERAS (ahora va arriba para poder mapear el clic)
 fechas_semana = [fecha_inicio_vista + timedelta(days=i) for i in range(7)]
 fechas_str = [str(d) for d in fechas_semana]
+
+cabeceras_columnas = []
+columnas_finde = [] 
+columna_seleccionada = None
+
+for d in fechas_semana:
+    nombre_dia = DIAS_SEMANA_ES[d.weekday()]
+    fecha_corta = d.strftime("%d/%m")
+    es_finde = d.weekday() >= 5
+    es_dia_elegido = (d == fecha_inicio_vista)
+    
+    iconos = ""
+    if es_dia_elegido: iconos += "📌 " 
+    if es_finde: iconos += "🔴 " 
+        
+    nombre_col = f"{iconos}{nombre_dia} {fecha_corta}".strip()
+    
+    if es_finde: columnas_finde.append(nombre_col)
+    if es_dia_elegido: columna_seleccionada = nombre_col
+        
+    cabeceras_columnas.append(nombre_col)
 
 st.markdown("---")
 
 # --- PROCESAR CLIC EN EL CUADRANTE ---
-# Leemos si el usuario ha hecho clic en la tabla ANTES de pintar el formulario
 if "grid_reservas" in st.session_state:
     seleccion = st.session_state.grid_reservas.get("selection", {})
     filas_sel = seleccion.get("rows", [])
     cols_sel = seleccion.get("columns", [])
     
     if filas_sel and cols_sel:
-        idx_fila = filas_sel[0]
-        idx_col = cols_sel[0]
-        # Actualizamos la memoria con la celda exacta que ha tocado
-        st.session_state.hora_form = HORAS[idx_fila]
-        st.session_state.fecha_form = fechas_semana[idx_col]
+        idx_fila = filas_sel[0]       # Es un número (índice de la hora)
+        nombre_col_sel = cols_sel[0]  # Es un texto (ej: "🔴 Sáb 28/03")
+        
+        # Buscamos en qué posición está esa columna para sacar la fecha real
+        if nombre_col_sel in cabeceras_columnas:
+            idx_col = cabeceras_columnas.index(nombre_col_sel)
+            # Actualizamos directamente las variables de los selectores
+            st.session_state.input_hora = HORAS[idx_fila]
+            st.session_state.input_fecha = fechas_semana[idx_col]
 
 # --- LAYOUT PRINCIPAL ---
 col_form, col_cuadrante = st.columns([1, 2.8])
@@ -78,17 +101,12 @@ col_form, col_cuadrante = st.columns([1, 2.8])
 with col_form:
     st.header("📝 Nueva Reserva")
     with st.form("form_nueva_reserva"):
-        # Los campos leen su valor por defecto del estado de sesión
-        fecha_reserva = st.date_input("Fecha de la reserva", value=st.session_state.fecha_form)
+        # Vinculamos los campos usando el parámetro 'key'
+        fecha_reserva = st.date_input("Fecha de la reserva", key="input_fecha")
         pista_sel = st.selectbox("Pista", PISTAS, index=PISTAS.index(pista_vista))
-        
-        try:
-            idx_hora = HORAS.index(st.session_state.hora_form)
-        except ValueError:
-            idx_hora = 0
-            
-        hora_sel = st.selectbox("Hora de Inicio", HORAS, index=idx_hora)
+        hora_sel = st.selectbox("Hora de Inicio", HORAS, key="input_hora")
         duracion_sel = st.selectbox("Duración", ["60 minutos", "90 minutos", "120 minutos"])
+        
         parcela_input = st.text_input("Nº de Parcela")
         nombre_input = st.text_input("Nombre del Cliente")
         pagado_check = st.checkbox("¿Reserva Pagada?")
@@ -152,29 +170,8 @@ with col_form:
 # --- COLUMNA 2: CUADRANTE SEMANAL ---
 with col_cuadrante:
     st.header(f"🗓️ Semana: {pista_vista}")
-    st.caption("👈 Haz clic en cualquier celda libre para rellenar el formulario de reserva automáticamente.")
+    st.caption("👈 Haz clic en cualquier celda para rellenar el formulario de reserva automáticamente.")
     
-    cabeceras_columnas = []
-    columnas_finde = [] 
-    columna_seleccionada = None
-    
-    for d in fechas_semana:
-        nombre_dia = DIAS_SEMANA_ES[d.weekday()]
-        fecha_corta = d.strftime("%d/%m")
-        es_finde = d.weekday() >= 5
-        es_dia_elegido = (d == fecha_inicio_vista)
-        
-        iconos = ""
-        if es_dia_elegido: iconos += "📌 " 
-        if es_finde: iconos += "🔴 " 
-            
-        nombre_col = f"{iconos}{nombre_dia} {fecha_corta}".strip()
-        
-        if es_finde: columnas_finde.append(nombre_col)
-        if es_dia_elegido: columna_seleccionada = nombre_col
-            
-        cabeceras_columnas.append(nombre_col)
-        
     cuadrante = pd.DataFrame(index=HORAS, columns=cabeceras_columnas)
     df_vista = df[(df['Pista'] == pista_vista) & (df['Fecha'].isin(fechas_str))]
     
@@ -196,12 +193,12 @@ with col_cuadrante:
 
     cuadrante_estilizado = cuadrante.style.apply(aplicar_estilos, axis=0)
     
-    # Renderizamos la tabla con interactividad activada
+    # Renderizamos la tabla con interactividad
     st.dataframe(
         cuadrante_estilizado, 
         use_container_width=True, 
         height=800,
-        selection_mode="single-cell", # Permite seleccionar una celda
-        on_select="rerun",            # Recarga la app al hacer clic
-        key="grid_reservas"           # Clave para guardar la selección en st.session_state
+        selection_mode="single-cell", 
+        on_select="rerun",            
+        key="grid_reservas"           
     )
