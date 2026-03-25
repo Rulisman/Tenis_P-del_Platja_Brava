@@ -35,15 +35,13 @@ def guardar_datos(df_a_guardar):
 # --- VENTANA MODAL DE EDICIÓN/RESERVA ---
 @st.dialog("Gestión de Reserva")
 def modal_gestionar_reserva(fecha_str, hora, pista):
-    # Cargamos los datos frescos dentro del modal
     df_actual = cargar_datos()
     
-    # Comprobamos si el tramo específico en el que hemos hecho clic ya está ocupado
     ocupado = df_actual[(df_actual['Fecha'] == fecha_str) & 
                         (df_actual['Hora'] == hora) & 
                         (df_actual['Pista'] == pista)]
     
-    # --- MODO 1: EDITAR / ELIMINAR RESERVA EXISTENTE ---
+    # MODO 1: EDITAR / ELIMINAR RESERVA EXISTENTE
     if not ocupado.empty:
         fila = ocupado.iloc[0]
         st.markdown(f"**Editando tramo:** 🎾 {pista} | 📅 {fecha_str} | ⏰ {hora}")
@@ -54,23 +52,21 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
         
         col1, col2 = st.columns(2)
         if col1.button("💾 Guardar Cambios", use_container_width=True):
-            # Actualizamos la fila exacta
             idx = ocupado.index[0]
             df_actual.at[idx, 'Parcela'] = parc
             df_actual.at[idx, 'Nombre'] = nom
             df_actual.at[idx, 'Pagado'] = "Sí" if pag else "No"
             guardar_datos(df_actual)
-            st.session_state.contador_tabla += 1 # Truco para recargar la tabla limpia
+            st.session_state.contador_tabla += 1 
             st.rerun()
             
         if col2.button("🗑️ Liberar Tramo", use_container_width=True):
-            # Borramos la fila
             df_actual.drop(ocupado.index, inplace=True)
             guardar_datos(df_actual)
             st.session_state.contador_tabla += 1
             st.rerun()
 
-    # --- MODO 2: CREAR NUEVA RESERVA ---
+    # MODO 2: CREAR NUEVA RESERVA
     else:
         st.markdown(f"**Nueva reserva:** 🎾 {pista} | 📅 {fecha_str} | ⏰ Inicio: {hora}")
         
@@ -109,14 +105,13 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
                         st.rerun()
 
 # --- INICIALIZAR ESTADO ---
-# Usamos un contador en el nombre de la tabla para que pierda la memoria del clic tras guardar
 if "contador_tabla" not in st.session_state:
     st.session_state.contador_tabla = 0
 
 df = cargar_datos()
 
 # --- INTERFAZ: CABECERA Y FILTROS ---
-st.title("🎾 Gestión de Pistas")
+st.title("🎾 Panel General de Pistas - Camping")
 
 col_filtro1, col_filtro2 = st.columns(2)
 with col_filtro1:
@@ -126,13 +121,10 @@ with col_filtro2:
 
 st.markdown("---")
 
-# Calculamos los 7 días y generamos las cabeceras
 fechas_semana = [fecha_inicio_vista + timedelta(days=i) for i in range(7)]
 fechas_str = [str(d) for d in fechas_semana]
 
 cabeceras_columnas = []
-columnas_finde = [] 
-columna_seleccionada = None
 
 for d in fechas_semana:
     nombre_dia = DIAS_SEMANA_ES[d.weekday()]
@@ -144,9 +136,6 @@ for d in fechas_semana:
     iconos += "🔴 " if es_finde else ""
         
     nombre_col = f"{iconos}{nombre_dia} {fecha_corta}".strip()
-    
-    if es_finde: columnas_finde.append(nombre_col)
-    if es_dia_elegido: columna_seleccionada = nombre_col
     cabeceras_columnas.append(nombre_col)
 
 # --- PROCESAR CLIC EN EL CUADRANTE ---
@@ -170,7 +159,7 @@ if clave_tabla in st.session_state:
             modal_gestionar_reserva(fecha_clic, hora_clic, pista_vista)
 
 # --- CUADRANTE SEMANAL A PANTALLA COMPLETA ---
-st.header(f"🗓️ {pista_vista}")
+st.header(f"🗓️ Vista Semanal: {pista_vista}")
 st.caption("👆 **Haz clic en cualquier celda (libre u ocupada) para gestionarla directamente.**")
 
 cuadrante = pd.DataFrame(index=HORAS, columns=cabeceras_columnas)
@@ -185,18 +174,9 @@ for _, fila in df_vista.iterrows():
     
 cuadrante = cuadrante.fillna("Libre")
 
-def aplicar_estilos(col):
-    if col.name == columna_seleccionada:
-        return ['background-color: #fffacd; color: #000000; font-weight: bold'] * len(col)
-    elif col.name in columnas_finde:
-        return ['background-color: #ffeeee; color: #8b0000'] * len(col)
-    return [''] * len(col)
-
-cuadrante_estilizado = cuadrante.style.apply(aplicar_estilos, axis=0)
-
-# Mostramos la tabla gigante
+# Mostramos la tabla directa SIN aplicar estilos de colores para que el clic funcione
 st.dataframe(
-    cuadrante_estilizado, 
+    cuadrante, 
     use_container_width=True, 
     height=800,
     selection_mode="single-cell", 
