@@ -46,8 +46,8 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
         fila = ocupado.iloc[0]
         st.markdown(f"**Editando tramo:** 🎾 {pista} | 📅 {fecha_str} | ⏰ {hora}")
         
-        parc = st.text_input("Nº de Parcela", value=fila['Parcela'])
-        nom = st.text_input("Nombre del Cliente", value=fila['Nombre'])
+        parc = st.text_input("Nº de Parcela", value=str(fila['Parcela']))
+        nom = st.text_input("Nombre del Cliente", value=str(fila['Nombre']))
         pag = st.checkbox("¿Reserva Pagada?", value=(fila['Pagado'] == "Sí"))
         
         col1, col2 = st.columns(2)
@@ -57,13 +57,11 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
             df_actual.at[idx, 'Nombre'] = nom
             df_actual.at[idx, 'Pagado'] = "Sí" if pag else "No"
             guardar_datos(df_actual)
-            st.session_state.contador_tabla += 1 
             st.rerun()
             
         if col2.button("🗑️ Liberar Tramo", use_container_width=True):
             df_actual.drop(ocupado.index, inplace=True)
             guardar_datos(df_actual)
-            st.session_state.contador_tabla += 1
             st.rerun()
 
     # MODO 2: CREAR NUEVA RESERVA
@@ -75,7 +73,7 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
         nom = st.text_input("Nombre del Cliente")
         pag = st.checkbox("¿Reserva Pagada?")
         
-        if st.button("💾 Confirmar Reserva", use_container_width=True):
+        if st.button("💾 Confirmar", use_container_width=True):
             if not parc or not nom:
                 st.error("⚠️ Parcela y nombre obligatorios.")
             else:
@@ -101,17 +99,13 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
                         
                         df_actual = pd.concat([df_actual, pd.DataFrame(nuevas_filas)], ignore_index=True)
                         guardar_datos(df_actual)
-                        st.session_state.contador_tabla += 1
                         st.rerun()
 
-# --- INICIALIZAR ESTADO ---
-if "contador_tabla" not in st.session_state:
-    st.session_state.contador_tabla = 0
-
-df = cargar_datos()
 
 # --- INTERFAZ: CABECERA Y FILTROS ---
 st.title("🎾 Panel General de Pistas - Camping")
+
+df = cargar_datos()
 
 col_filtro1, col_filtro2 = st.columns(2)
 with col_filtro1:
@@ -121,65 +115,57 @@ with col_filtro2:
 
 st.markdown("---")
 
+# Preparar datos de la semana
 fechas_semana = [fecha_inicio_vista + timedelta(days=i) for i in range(7)]
 fechas_str = [str(d) for d in fechas_semana]
 
-cabeceras_columnas = []
+# Diccionario de reservas para renderizar la matriz de botones super rápido
+df_vista = df[(df['Pista'] == pista_vista) & (df['Fecha'].isin(fechas_str))]
+reservas_dict = {}
+for _, fila in df_vista.iterrows():
+    reservas_dict[(fila['Fecha'], fila['Hora'])] = fila
 
-for d in fechas_semana:
+st.header(f"🗓️ Vista Semanal: {pista_vista}")
+st.caption("👆 **Haz clic en cualquier tramo para reservar, editar o liberar.**")
+
+# --- GENERAR MATRIZ DE BOTONES (EL NUEVO CALENDARIO) ---
+# 1. Cabeceras de los días
+cols = st.columns([0.8] + [1.5]*7)
+with cols[0]:
+    st.markdown("<div style='text-align:center'><b>Hora</b></div>", unsafe_allow_html=True)
+
+for i, d in enumerate(fechas_semana):
     nombre_dia = DIAS_SEMANA_ES[d.weekday()]
     fecha_corta = d.strftime("%d/%m")
-    es_finde = d.weekday() >= 5
-    es_dia_elegido = (d == fecha_inicio_vista)
+    es_finde = "🔴" if d.weekday() >= 5 else ""
+    es_hoy = "📌" if d == fecha_inicio_vista else ""
     
-    iconos = "📌 " if es_dia_elegido else ""
-    iconos += "🔴 " if es_finde else ""
+    with cols[i+1]:
+        st.markdown(f"<div style='text-align:center'><b>{es_hoy} {es_finde} {nombre_dia} {fecha_corta}</b></div>", unsafe_allow_html=True)
+
+st.markdown("<hr style='margin:0.5em 0'>", unsafe_allow_html=True)
+
+# 2. Filas de horas y botones
+for hora in HORAS:
+    cols_fila = st.columns([0.8] + [1.5]*7)
+    
+    # Columna de la hora
+    with cols_fila[0]:
+        st.markdown(f"<div style='text-align:center; padding-top:8px;'><b>{hora}</b></div>", unsafe_allow_html=True)
         
-    nombre_col = f"{iconos}{nombre_dia} {fecha_corta}".strip()
-    cabeceras_columnas.append(nombre_col)
-
-# --- PROCESAR CLIC EN EL CUADRANTE ---
-clave_tabla = f"grid_reservas_{st.session_state.contador_tabla}"
-
-if clave_tabla in st.session_state:
-    seleccion = st.session_state[clave_tabla].get("selection", {})
-    filas_sel = seleccion.get("rows", [])
-    cols_sel = seleccion.get("columns", [])
-    
-    if filas_sel and cols_sel:
-        idx_fila = filas_sel[0]
-        nombre_col_sel = cols_sel[0]
-        
-        if nombre_col_sel in cabeceras_columnas:
-            idx_col = cabeceras_columnas.index(nombre_col_sel)
-            hora_clic = HORAS[idx_fila]
-            fecha_clic = fechas_str[idx_col]
-            
-            # Lanzamos la ventana modal
-            modal_gestionar_reserva(fecha_clic, hora_clic, pista_vista)
-
-# --- CUADRANTE SEMANAL A PANTALLA COMPLETA ---
-st.header(f"🗓️ Vista Semanal: {pista_vista}")
-st.caption("👆 **Haz clic en cualquier celda (libre u ocupada) para gestionarla directamente.**")
-
-cuadrante = pd.DataFrame(index=HORAS, columns=cabeceras_columnas)
-df_vista = df[(df['Pista'] == pista_vista) & (df['Fecha'].isin(fechas_str))]
-
-for _, fila in df_vista.iterrows():
-    idx_fecha = fechas_str.index(fila['Fecha'])
-    nombre_columna = cabeceras_columnas[idx_fecha]
-    icono_pago = "💰" if fila['Pagado'] == "Sí" else "⏳"
-    texto_celda = f"P.{fila['Parcela']} | {fila['Nombre']} {icono_pago}"
-    cuadrante.at[fila['Hora'], nombre_columna] = texto_celda
-    
-cuadrante = cuadrante.fillna("Libre")
-
-# Mostramos la tabla directa SIN aplicar estilos de colores para que el clic funcione
-st.dataframe(
-    cuadrante, 
-    use_container_width=True, 
-    height=800,
-    selection_mode="single-cell", 
-    on_select="rerun",            
-    key=clave_tabla           
-)
+    # Columnas de los días
+    for i, d_str in enumerate(fechas_str):
+        with cols_fila[i+1]:
+            # Comprobamos si hay reserva en ese día y hora
+            if (d_str, hora) in reservas_dict:
+                res = reservas_dict[(d_str, hora)]
+                icono_pago = "💰" if res['Pagado'] == "Sí" else "⏳"
+                label = f"P.{res['Parcela']} | {res['Nombre']} {icono_pago}"
+                
+                # Botón ROJO (Ocupado)
+                if st.button(label, key=f"btn_{d_str}_{hora}", use_container_width=True, type="primary"):
+                    modal_gestionar_reserva(d_str, hora, pista_vista)
+            else:
+                # Botón GRIS (Libre)
+                if st.button("Libre", key=f"btn_{d_str}_{hora}", use_container_width=True, type="secondary"):
+                    modal_gestionar_reserva(d_str, hora, pista_vista)
