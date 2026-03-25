@@ -12,7 +12,7 @@ PISTAS = ["TENIS 1", "TENIS 2", "PADEL 1", "PADEL 2"]
 COLUMNAS_DF = ['Fecha', 'Pista', 'Hora', 'Parcela', 'Nombre', 'Pagado']
 DIAS_SEMANA_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
-# --- GENERACIÓN DE FRANJAS HORARIAS (Cada 30 min) ---
+# --- FUNCIONES BASE ---
 def generar_franjas():
     franjas = []
     hora_actual = datetime.strptime("08:00", "%H:%M")
@@ -24,33 +24,109 @@ def generar_franjas():
 
 HORAS = generar_franjas()
 
-# --- FUNCIONES DE DATOS ---
 def cargar_datos():
     if os.path.exists(ARCHIVO_DATOS):
         return pd.read_csv(ARCHIVO_DATOS)
     return pd.DataFrame(columns=COLUMNAS_DF)
 
-def guardar_datos(df):
-    df.to_csv(ARCHIVO_DATOS, index=False)
+def guardar_datos(df_a_guardar):
+    df_a_guardar.to_csv(ARCHIVO_DATOS, index=False)
+
+# --- VENTANA MODAL DE EDICIÓN/RESERVA ---
+@st.dialog("Gestión de Reserva")
+def modal_gestionar_reserva(fecha_str, hora, pista):
+    # Cargamos los datos frescos dentro del modal
+    df_actual = cargar_datos()
+    
+    # Comprobamos si el tramo específico en el que hemos hecho clic ya está ocupado
+    ocupado = df_actual[(df_actual['Fecha'] == fecha_str) & 
+                        (df_actual['Hora'] == hora) & 
+                        (df_actual['Pista'] == pista)]
+    
+    # --- MODO 1: EDITAR / ELIMINAR RESERVA EXISTENTE ---
+    if not ocupado.empty:
+        fila = ocupado.iloc[0]
+        st.markdown(f"**Editando tramo:** 🎾 {pista} | 📅 {fecha_str} | ⏰ {hora}")
+        
+        parc = st.text_input("Nº de Parcela", value=fila['Parcela'])
+        nom = st.text_input("Nombre del Cliente", value=fila['Nombre'])
+        pag = st.checkbox("¿Reserva Pagada?", value=(fila['Pagado'] == "Sí"))
+        
+        col1, col2 = st.columns(2)
+        if col1.button("💾 Guardar Cambios", use_container_width=True):
+            # Actualizamos la fila exacta
+            idx = ocupado.index[0]
+            df_actual.at[idx, 'Parcela'] = parc
+            df_actual.at[idx, 'Nombre'] = nom
+            df_actual.at[idx, 'Pagado'] = "Sí" if pag else "No"
+            guardar_datos(df_actual)
+            st.session_state.contador_tabla += 1 # Truco para recargar la tabla limpia
+            st.rerun()
+            
+        if col2.button("🗑️ Liberar Tramo", use_container_width=True):
+            # Borramos la fila
+            df_actual.drop(ocupado.index, inplace=True)
+            guardar_datos(df_actual)
+            st.session_state.contador_tabla += 1
+            st.rerun()
+
+    # --- MODO 2: CREAR NUEVA RESERVA ---
+    else:
+        st.markdown(f"**Nueva reserva:** 🎾 {pista} | 📅 {fecha_str} | ⏰ Inicio: {hora}")
+        
+        duracion = st.selectbox("Duración", ["60 minutos", "90 minutos", "120 minutos"])
+        parc = st.text_input("Nº de Parcela")
+        nom = st.text_input("Nombre del Cliente")
+        pag = st.checkbox("¿Reserva Pagada?")
+        
+        if st.button("💾 Confirmar Reserva", use_container_width=True):
+            if not parc or not nom:
+                st.error("⚠️ Parcela y nombre obligatorios.")
+            else:
+                minutos = int(duracion.split()[0])
+                bloques_necesarios = minutos // 30
+                idx_inicio = HORAS.index(hora)
+                
+                if idx_inicio + bloques_necesarios > len(HORAS):
+                    st.error("❌ Excede el horario de cierre (22:00).")
+                else:
+                    franjas_a_ocupar = HORAS[idx_inicio : idx_inicio + bloques_necesarios]
+                    conflicto = df_actual[(df_actual['Fecha'] == fecha_str) & 
+                                          (df_actual['Pista'] == pista) & 
+                                          (df_actual['Hora'].isin(franjas_a_ocupar))]
+                    
+                    if not conflicto.empty:
+                        st.error("❌ Conflicto. Algunos tramos seleccionados ya están ocupados.")
+                    else:
+                        nuevas_filas = [{
+                            'Fecha': fecha_str, 'Pista': pista, 'Hora': f,
+                            'Parcela': parc, 'Nombre': nom, 'Pagado': "Sí" if pag else "No"
+                        } for f in franjas_a_ocupar]
+                        
+                        df_actual = pd.concat([df_actual, pd.DataFrame(nuevas_filas)], ignore_index=True)
+                        guardar_datos(df_actual)
+                        st.session_state.contador_tabla += 1
+                        st.rerun()
+
+# --- INICIALIZAR ESTADO ---
+# Usamos un contador en el nombre de la tabla para que pierda la memoria del clic tras guardar
+if "contador_tabla" not in st.session_state:
+    st.session_state.contador_tabla = 0
 
 df = cargar_datos()
 
-# --- INICIALIZAR ESTADO DE SESIÓN DE LOS WIDGETS ---
-if "input_fecha" not in st.session_state:
-    st.session_state.input_fecha = date.today()
-if "input_hora" not in st.session_state:
-    st.session_state.input_hora = HORAS[0]
-
-# --- CABECERA Y FILTROS ---
-st.title("🎾 Gestión Semanal de Pistas - Camping")
+# --- INTERFAZ: CABECERA Y FILTROS ---
+st.title("🎾 Panel General de Pistas - Camping")
 
 col_filtro1, col_filtro2 = st.columns(2)
 with col_filtro1:
-    fecha_inicio_vista = st.date_input("📅 Selecciona el día de inicio de la semana", date.today())
+    fecha_inicio_vista = st.date_input("📅 Día de inicio de la semana", date.today())
 with col_filtro2:
-    pista_vista = st.selectbox("🎾 Selecciona la Pista a visualizar", PISTAS)
+    pista_vista = st.selectbox("🎾 Pista a visualizar", PISTAS)
 
-# Calculamos los 7 días y generamos las CABECERAS (ahora va arriba para poder mapear el clic)
+st.markdown("---")
+
+# Calculamos los 7 días y generamos las cabeceras
 fechas_semana = [fecha_inicio_vista + timedelta(days=i) for i in range(7)]
 fechas_str = [str(d) for d in fechas_semana]
 
@@ -64,141 +140,66 @@ for d in fechas_semana:
     es_finde = d.weekday() >= 5
     es_dia_elegido = (d == fecha_inicio_vista)
     
-    iconos = ""
-    if es_dia_elegido: iconos += "📌 " 
-    if es_finde: iconos += "🔴 " 
+    iconos = "📌 " if es_dia_elegido else ""
+    iconos += "🔴 " if es_finde else ""
         
     nombre_col = f"{iconos}{nombre_dia} {fecha_corta}".strip()
     
     if es_finde: columnas_finde.append(nombre_col)
     if es_dia_elegido: columna_seleccionada = nombre_col
-        
     cabeceras_columnas.append(nombre_col)
 
-st.markdown("---")
-
 # --- PROCESAR CLIC EN EL CUADRANTE ---
-if "grid_reservas" in st.session_state:
-    seleccion = st.session_state.grid_reservas.get("selection", {})
+clave_tabla = f"grid_reservas_{st.session_state.contador_tabla}"
+
+if clave_tabla in st.session_state:
+    seleccion = st.session_state[clave_tabla].get("selection", {})
     filas_sel = seleccion.get("rows", [])
     cols_sel = seleccion.get("columns", [])
     
     if filas_sel and cols_sel:
-        idx_fila = filas_sel[0]       # Es un número (índice de la hora)
-        nombre_col_sel = cols_sel[0]  # Es un texto (ej: "🔴 Sáb 28/03")
+        idx_fila = filas_sel[0]
+        nombre_col_sel = cols_sel[0]
         
-        # Buscamos en qué posición está esa columna para sacar la fecha real
         if nombre_col_sel in cabeceras_columnas:
             idx_col = cabeceras_columnas.index(nombre_col_sel)
-            # Actualizamos directamente las variables de los selectores
-            st.session_state.input_hora = HORAS[idx_fila]
-            st.session_state.input_fecha = fechas_semana[idx_col]
-
-# --- LAYOUT PRINCIPAL ---
-col_form, col_cuadrante = st.columns([1, 2.8])
-
-# --- COLUMNA 1: FORMULARIOS ---
-with col_form:
-    st.header("📝 Nueva Reserva")
-    with st.form("form_nueva_reserva"):
-        # Vinculamos los campos usando el parámetro 'key'
-        fecha_reserva = st.date_input("Fecha de la reserva", key="input_fecha")
-        pista_sel = st.selectbox("Pista", PISTAS, index=PISTAS.index(pista_vista))
-        hora_sel = st.selectbox("Hora de Inicio", HORAS, key="input_hora")
-        duracion_sel = st.selectbox("Duración", ["60 minutos", "90 minutos", "120 minutos"])
-        
-        parcela_input = st.text_input("Nº de Parcela")
-        nombre_input = st.text_input("Nombre del Cliente")
-        pagado_check = st.checkbox("¿Reserva Pagada?")
-        
-        btn_guardar = st.form_submit_button("Guardar Reserva")
-        
-        if btn_guardar:
-            if not parcela_input or not nombre_input:
-                st.error("⚠️ Parcela y nombre obligatorios.")
-            else:
-                minutos = int(duracion_sel.split()[0])
-                bloques_necesarios = minutos // 30
-                idx_inicio = HORAS.index(hora_sel)
-                
-                if idx_inicio + bloques_necesarios > len(HORAS):
-                    st.error("❌ Excede el horario de cierre (22:00).")
-                else:
-                    franjas_a_ocupar = HORAS[idx_inicio : idx_inicio + bloques_necesarios]
-                    ocupado = df[(df['Fecha'] == str(fecha_reserva)) & 
-                                 (df['Pista'] == pista_sel) & 
-                                 (df['Hora'].isin(franjas_a_ocupar))]
-                    
-                    if not ocupado.empty:
-                        st.error("❌ Conflicto. La pista ya está ocupada en ese tramo.")
-                    else:
-                        nuevas_filas = [{
-                            'Fecha': str(fecha_reserva),
-                            'Pista': pista_sel,
-                            'Hora': franja,
-                            'Parcela': parcela_input,
-                            'Nombre': nombre_input,
-                            'Pagado': "Sí" if pagado_check else "No"
-                        } for franja in franjas_a_ocupar]
-                        
-                        df = pd.concat([df, pd.DataFrame(nuevas_filas)], ignore_index=True)
-                        guardar_datos(df)
-                        st.success("✅ Reserva confirmada.")
-                        st.rerun()
-
-    st.markdown("---")
-    
-    st.header("🗑️ Cancelar Tramo")
-    df_cancelar = df[(df['Pista'] == pista_vista) & (df['Fecha'].isin(fechas_str))]
-    
-    if not df_cancelar.empty:
-        with st.form("form_cancelar"):
-            opciones_canc = [f"{fila['Fecha']} | {fila['Hora']} | Parc {fila['Parcela']}" for _, fila in df_cancelar.iterrows()]
-            seleccion_canc = st.selectbox("Selecciona el tramo a liberar", opciones_canc)
-            btn_cancelar = st.form_submit_button("Eliminar tramo")
+            hora_clic = HORAS[idx_fila]
+            fecha_clic = fechas_str[idx_col]
             
-            if btn_cancelar:
-                fecha_canc, hora_canc, resto = [x.strip() for x in seleccion_canc.split("|")]
-                condicion = (df['Fecha'] == fecha_canc) & (df['Hora'] == hora_canc) & (df['Pista'] == pista_vista)
-                df = df[~condicion]
-                guardar_datos(df)
-                st.success("🗑️ Tramo liberado.")
-                st.rerun()
-    else:
-        st.info("No hay reservas en esta pista durante estos 7 días.")
+            # Lanzamos la ventana modal
+            modal_gestionar_reserva(fecha_clic, hora_clic, pista_vista)
 
-# --- COLUMNA 2: CUADRANTE SEMANAL ---
-with col_cuadrante:
-    st.header(f"🗓️ Semana: {pista_vista}")
-    st.caption("👈 Haz clic en cualquier celda para rellenar el formulario de reserva automáticamente.")
-    
-    cuadrante = pd.DataFrame(index=HORAS, columns=cabeceras_columnas)
-    df_vista = df[(df['Pista'] == pista_vista) & (df['Fecha'].isin(fechas_str))]
-    
-    for _, fila in df_vista.iterrows():
-        idx_fecha = fechas_str.index(fila['Fecha'])
-        nombre_columna = cabeceras_columnas[idx_fecha]
-        icono_pago = "💰" if fila['Pagado'] == "Sí" else "⏳"
-        texto_celda = f"P.{fila['Parcela']} | {fila['Nombre']} {icono_pago}"
-        cuadrante.at[fila['Hora'], nombre_columna] = texto_celda
-        
-    cuadrante = cuadrante.fillna("Libre")
-    
-    def aplicar_estilos(col):
-        if col.name == columna_seleccionada:
-            return ['background-color: #fffacd; color: #000000; font-weight: bold'] * len(col)
-        elif col.name in columnas_finde:
-            return ['background-color: #ffeeee; color: #8b0000'] * len(col)
-        return [''] * len(col)
+# --- CUADRANTE SEMANAL A PANTALLA COMPLETA ---
+st.header(f"🗓️ Vista Semanal: {pista_vista}")
+st.caption("👆 **Haz clic en cualquier celda (libre u ocupada) para gestionarla directamente.**")
 
-    cuadrante_estilizado = cuadrante.style.apply(aplicar_estilos, axis=0)
+cuadrante = pd.DataFrame(index=HORAS, columns=cabeceras_columnas)
+df_vista = df[(df['Pista'] == pista_vista) & (df['Fecha'].isin(fechas_str))]
+
+for _, fila in df_vista.iterrows():
+    idx_fecha = fechas_str.index(fila['Fecha'])
+    nombre_columna = cabeceras_columnas[idx_fecha]
+    icono_pago = "💰" if fila['Pagado'] == "Sí" else "⏳"
+    texto_celda = f"P.{fila['Parcela']} | {fila['Nombre']} {icono_pago}"
+    cuadrante.at[fila['Hora'], nombre_columna] = texto_celda
     
-    # Renderizamos la tabla con interactividad
-    st.dataframe(
-        cuadrante_estilizado, 
-        use_container_width=True, 
-        height=800,
-        selection_mode="single-cell", 
-        on_select="rerun",            
-        key="grid_reservas"           
-    )
+cuadrante = cuadrante.fillna("Libre")
+
+def aplicar_estilos(col):
+    if col.name == columna_seleccionada:
+        return ['background-color: #fffacd; color: #000000; font-weight: bold'] * len(col)
+    elif col.name in columnas_finde:
+        return ['background-color: #ffeeee; color: #8b0000'] * len(col)
+    return [''] * len(col)
+
+cuadrante_estilizado = cuadrante.style.apply(aplicar_estilos, axis=0)
+
+# Mostramos la tabla gigante
+st.dataframe(
+    cuadrante_estilizado, 
+    use_container_width=True, 
+    height=800,
+    selection_mode="single-cell", 
+    on_select="rerun",            
+    key=clave_tabla           
+)
