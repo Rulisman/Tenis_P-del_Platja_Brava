@@ -103,7 +103,7 @@ with col_form:
 
     st.markdown("---")
     
-    st.header("🗑️ Cancelar Tramo")
+    st.header("🗑️ Cancelar reserva")
     # Generamos la lista de los 7 días que estamos visualizando
     fechas_semana = [fecha_inicio_vista + timedelta(days=i) for i in range(7)]
     fechas_str = [str(d) for d in fechas_semana]
