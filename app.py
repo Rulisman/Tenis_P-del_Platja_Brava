@@ -103,7 +103,7 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
 
 
 # --- INTERFAZ: CABECERA Y FILTROS ---
-st.title("🎾 Panel General de Pistas - Camping")
+st.title("🎾 Gestión de Pistas")
 
 df = cargar_datos()
 
@@ -125,7 +125,7 @@ reservas_dict = {}
 for _, fila in df_vista.iterrows():
     reservas_dict[(fila['Fecha'], fila['Hora'])] = fila
 
-st.header(f"🗓️ Vista Semanal: {pista_vista}")
+st.header(f"🗓️ {pista_vista}")
 st.caption("👆 **Haz clic en cualquier tramo para reservar, editar o liberar.**")
 
 # --- GENERAR MATRIZ DE BOTONES (EL NUEVO CALENDARIO) ---
