@@ -135,25 +135,36 @@ with col_form:
     else:
         st.info("No hay reservas en esta pista durante estos 7 días.")
 
-# --- COLUMNA 2: CUADRANTE SEMANAL ---
+    # --- COLUMNA 2: CUADRANTE SEMANAL ---
 with col_cuadrante:
     st.header(f"🗓️ Semana: {pista_vista}")
     
-    # Preparamos las cabeceras y detectamos los fines de semana
+    # Preparamos las cabeceras, detectamos findes y el día seleccionado
     cabeceras_columnas = []
-    columnas_finde = [] # Guardaremos cuáles son fin de semana para colorearlas
+    columnas_finde = [] 
+    columna_seleccionada = None
     
     for d in fechas_semana:
         nombre_dia = DIAS_SEMANA_ES[d.weekday()]
         fecha_corta = d.strftime("%d/%m")
         
-        # Si es Sábado (5) o Domingo (6)
-        if d.weekday() >= 5:
-            # Añadimos un círculo rojo al texto del encabezado
-            nombre_col = f"🔴 {nombre_dia} {fecha_corta}"
+        es_finde = d.weekday() >= 5
+        es_dia_elegido = (d == fecha_inicio_vista)
+        
+        # Construimos el nombre de la cabecera añadiendo iconos según corresponda
+        iconos = ""
+        if es_dia_elegido:
+            iconos += "📌 "  # Marcador para el día seleccionado
+        if es_finde:
+            iconos += "🔴 "  # Marcador para fin de semana
+            
+        nombre_col = f"{iconos}{nombre_dia} {fecha_corta}".strip()
+        
+        # Guardamos en listas para aplicar estilos luego
+        if es_finde:
             columnas_finde.append(nombre_col)
-        else:
-            nombre_col = f"{nombre_dia} {fecha_corta}"
+        if es_dia_elegido:
+            columna_seleccionada = nombre_col
             
         cabeceras_columnas.append(nombre_col)
         
@@ -175,15 +186,27 @@ with col_cuadrante:
         
     cuadrante = cuadrante.fillna("Libre")
     
-    # --- ESTILIZADO DE PANDAS ---
-    def resaltar_finde(col):
-        """Aplica fondo rojo claro a las celdas si la columna es fin de semana"""
-        if col.name in columnas_finde:
+    # --- ESTILIZADO DE PANDAS AVANZADO ---
+    def aplicar_estilos(col):
+        """Aplica colores distintos si es el día seleccionado o si es fin de semana"""
+        # Prioridad 1: El día que el usuario ha seleccionado (Día en cuestión)
+        if col.name == columna_seleccionada:
+            # Fondo amarillo suave y texto en negrita
+            return ['background-color: #fffacd; color: #000000; font-weight: bold'] * len(col)
+        
+        # Prioridad 2: Fines de semana (si no coinciden con el día seleccionado)
+        elif col.name in columnas_finde:
+            # Fondo rojo claro y texto rojo oscuro
             return ['background-color: #ffeeee; color: #8b0000'] * len(col)
+            
+        # Resto de días (blanco/por defecto)
         return [''] * len(col)
 
     # Aplicamos el estilo al DataFrame
-    cuadrante_estilizado = cuadrante.style.apply(resaltar_finde, axis=0)
+    cuadrante_estilizado = cuadrante.style.apply(aplicar_estilos, axis=0)
+    
+    # Mostramos el DataFrame
+    st.dataframe(cuadrante_estilizado, use_container_width=True, height=800)
     
     # Mostramos el DataFrame pasando el objeto estilizado
     st.dataframe(cuadrante_estilizado, use_container_width=True, height=800)
