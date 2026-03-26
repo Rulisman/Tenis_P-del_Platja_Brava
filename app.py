@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
 import os
-from io import BytesIO
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Reservas Pistas - Camping", page_icon="🎾", layout="wide")
 
 # --- ESTILOS CSS PERSONALIZADOS ---
+# Forzamos que los botones "secundarios" (los libres y los de guardar) sean VERDES
 st.markdown("""
 <style>
 button[kind="secondary"] {
@@ -52,14 +52,6 @@ def cargar_datos():
 def guardar_datos(df_a_guardar):
     df_a_guardar.to_csv(ARCHIVO_DATOS, index=False)
 
-def convertir_df_a_excel(df):
-    """Convierte el DataFrame a un archivo Excel en memoria"""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Reservas')
-    processed_data = output.getvalue()
-    return processed_data
-
 # --- VENTANA MODAL DE EDICIÓN/RESERVA ---
 @st.dialog("Gestión de Reserva")
 def modal_gestionar_reserva(fecha_str, hora, pista):
@@ -79,6 +71,7 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
         pag = st.checkbox("¿Reserva Pagada?", value=(fila['Pagado'] == "Sí"))
         
         col1, col2 = st.columns(2)
+        # Botón tipo "secondary" (se verá verde gracias a nuestro CSS)
         if col1.button("💾 Guardar Cambios", use_container_width=True, type="secondary"):
             idx = ocupado.index[0]
             df_actual.at[idx, 'Parcela'] = parc
@@ -87,6 +80,7 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
             guardar_datos(df_actual)
             st.rerun()
             
+        # Botón tipo "primary" (se verá rojo, ideal para borrar)
         if col2.button("🗑️ Liberar Tramo", use_container_width=True, type="primary"):
             df_actual.drop(ocupado.index, inplace=True)
             guardar_datos(df_actual)
@@ -101,6 +95,7 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
         nom = st.text_input("Nombre del Cliente")
         pag = st.checkbox("¿Reserva Pagada?")
         
+        # Botón tipo "secondary" (se verá verde gracias a nuestro CSS)
         if st.button("💾 Confirmar", use_container_width=True, type="secondary"):
             if not parc or not nom:
                 st.error("⚠️ Parcela y nombre obligatorios.")
@@ -129,31 +124,11 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
                         guardar_datos(df_actual)
                         st.rerun()
 
-# --- CARGA GENERAL DE DATOS ---
-df = cargar_datos()
-
-# --- BARRA LATERAL (ADMINISTRACIÓN Y EXPORTACIÓN) ---
-with st.sidebar:
-    st.header("⚙️ Administración")
-    st.write("Exporta los datos para contabilidad o informes.")
-    
-    if not df.empty:
-        # Generamos el archivo Excel en memoria
-        archivo_excel = convertir_df_a_excel(df)
-        
-        # Botón de descarga nativo de Streamlit
-        st.download_button(
-            label="📥 Exportar Reservas a Excel",
-            data=archivo_excel,
-            file_name=f"Reservas_Pistas_Camping_{date.today()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-    else:
-        st.info("No hay datos para exportar aún.")
 
 # --- INTERFAZ: CABECERA Y FILTROS ---
 st.title("🎾 Gestión de Pistas")
+
+df = cargar_datos()
 
 col_filtro1, col_filtro2 = st.columns(2)
 with col_filtro1:
