@@ -6,6 +6,26 @@ import os
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Reservas Pistas - Camping", page_icon="🎾", layout="wide")
 
+# --- ESTILOS CSS PERSONALIZADOS ---
+# Forzamos que los botones "secundarios" (los libres y los de guardar) sean VERDES
+st.markdown("""
+<style>
+button[kind="secondary"] {
+    background-color: #28a745 !important;
+    color: white !important;
+    border-color: #28a745 !important;
+}
+button[kind="secondary"]:hover {
+    background-color: #218838 !important;
+    border-color: #1e7e34 !important;
+    color: white !important;
+}
+button[kind="secondary"] * {
+    color: white !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- CONSTANTES ---
 ARCHIVO_DATOS = "reservas_camping.csv"
 PISTAS = ["TENIS 1", "TENIS 2", "PADEL 1", "PADEL 2"]
@@ -51,7 +71,8 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
         pag = st.checkbox("¿Reserva Pagada?", value=(fila['Pagado'] == "Sí"))
         
         col1, col2 = st.columns(2)
-        if col1.button("💾 Guardar Cambios", use_container_width=True):
+        # Botón tipo "secondary" (se verá verde gracias a nuestro CSS)
+        if col1.button("💾 Guardar Cambios", use_container_width=True, type="secondary"):
             idx = ocupado.index[0]
             df_actual.at[idx, 'Parcela'] = parc
             df_actual.at[idx, 'Nombre'] = nom
@@ -59,7 +80,8 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
             guardar_datos(df_actual)
             st.rerun()
             
-        if col2.button("🗑️ Liberar Tramo", use_container_width=True):
+        # Botón tipo "primary" (se verá rojo, ideal para borrar)
+        if col2.button("🗑️ Liberar Tramo", use_container_width=True, type="primary"):
             df_actual.drop(ocupado.index, inplace=True)
             guardar_datos(df_actual)
             st.rerun()
@@ -73,7 +95,8 @@ def modal_gestionar_reserva(fecha_str, hora, pista):
         nom = st.text_input("Nombre del Cliente")
         pag = st.checkbox("¿Reserva Pagada?")
         
-        if st.button("💾 Confirmar", use_container_width=True):
+        # Botón tipo "secondary" (se verá verde gracias a nuestro CSS)
+        if st.button("💾 Confirmar", use_container_width=True, type="secondary"):
             if not parc or not nom:
                 st.error("⚠️ Parcela y nombre obligatorios.")
             else:
@@ -162,10 +185,10 @@ for hora in HORAS:
                 icono_pago = "💰" if res['Pagado'] == "Sí" else "⏳"
                 label = f"P.{res['Parcela']} | {res['Nombre']} {icono_pago}"
                 
-                # Botón ROJO (Ocupado)
+                # Botón ROJO (Ocupado - tipo primary)
                 if st.button(label, key=f"btn_{d_str}_{hora}", use_container_width=True, type="primary"):
                     modal_gestionar_reserva(d_str, hora, pista_vista)
             else:
-                # Botón GRIS (Libre)
+                # Botón VERDE (Libre - tipo secondary afectado por nuestro CSS)
                 if st.button("Libre", key=f"btn_{d_str}_{hora}", use_container_width=True, type="secondary"):
                     modal_gestionar_reserva(d_str, hora, pista_vista)
